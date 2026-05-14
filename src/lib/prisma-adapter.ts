@@ -25,6 +25,16 @@ function resolvePoolMax() {
   return parsedValue;
 }
 
+function shouldAcceptInvalidCerts(connectionString: string) {
+  try {
+    const url = new URL(connectionString);
+
+    return url.searchParams.get("sslaccept") === "accept_invalid_certs";
+  } catch {
+    return false;
+  }
+}
+
 export function createPostgresAdapter() {
   const connectionString = process.env.DATABASE_URL;
 
@@ -42,7 +52,14 @@ export function createPostgresAdapter() {
 
   return new PrismaPg({
     connectionString,
-    max: resolvePoolMax()
+    max: resolvePoolMax(),
+    ...(shouldAcceptInvalidCerts(connectionString)
+      ? {
+          ssl: {
+            rejectUnauthorized: false
+          }
+        }
+      : {})
   });
 }
 
