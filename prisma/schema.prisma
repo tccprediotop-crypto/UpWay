@@ -1,0 +1,237 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/sqlite-client"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum Role {
+  ADMIN
+  PORTER
+  RESIDENT
+}
+
+enum PackageStatus {
+  RECEIVED
+  NOTIFIED
+  TOKEN_GENERATED
+  PICKED_UP
+}
+
+enum HistoryType {
+  CREATED
+  NOTIFIED
+  TOKEN_GENERATED
+  PICKED_UP
+  PROFILE_UPDATED
+}
+
+enum NotificationType {
+  PACKAGE_UPDATE
+  TOKEN_READY
+  OPERATIONAL
+  PROFILE_SECURITY
+}
+
+enum DeliveryChannel {
+  IN_APP
+  PUSH
+  WHATSAPP
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  SKIPPED
+  FAILED
+}
+
+enum AuditAction {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  PORTER_CREATED
+  RESIDENT_CREATED
+  RESIDENT_UPDATED
+  RESIDENT_ARCHIVED
+  RESIDENT_PASSWORD_CHANGED
+  PROFILE_UPDATED
+  UNIT_CREATED
+  PACKAGE_CREATED
+  TOKEN_GENERATED
+  TOKEN_VALIDATED
+  PUSH_SUBSCRIBED
+  PUSH_UNSUBSCRIBED
+  NOTIFICATION_DELIVERED
+  NOTIFICATION_FAILED
+}
+
+enum AuditEntityType {
+  AUTH
+  USER
+  UNIT
+  PACKAGE
+  NOTIFICATION
+}
+
+model Tower {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  units     Unit[]
+}
+
+model Unit {
+  id        String    @id @default(cuid())
+  number    String
+  label     String
+  floor     Int?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  towerId   String
+  tower     Tower     @relation(fields: [towerId], references: [id], onDelete: Cascade)
+  residents User[]
+  packages  Package[]
+
+  @@unique([towerId, number])
+}
+
+model User {
+  id               String             @id @default(cuid())
+  name             String
+  email            String             @unique
+  passwordHash     String
+  role             Role
+  phone            String?
+  jobTitle         String?
+  isActive         Boolean            @default(true)
+  mustChangePassword Boolean          @default(false)
+  lastLoginAt      DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  unitId           String?
+  unit             Unit?              @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  notifications    Notification[]
+  receivedPackages Package[]          @relation("PackageReceiver")
+  residentPackages Package[]          @relation("PackageResident")
+  historyEntries   PackageHistory[]
+  generatedTokens  PickupToken[]      @relation("TokenGenerator")
+  validatedTokens  PickupToken[]      @relation("TokenValidator")
+  pushSubscriptions PushSubscription[]
+  auditLogs        AuditLog[]         @relation("AuditActor")
+}
+
+model Package {
+  id               String           @id @default(cuid())
+  trackingCode     String           @unique
+  carrier          String
+  description      String?
+  status           PackageStatus    @default(RECEIVED)
+  receivedAt       DateTime         @default(now())
+  notifiedAt       DateTime?
+  pickedUpAt       DateTime?
+  dueAt            DateTime?
+  notificationSent Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  residentId       String
+  resident         User             @relation("PackageResident", fields: [residentId], references: [id], onDelete: Cascade)
+  unitId           String
+  unit             Unit             @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  receivedById     String
+  receivedBy       User             @relation("PackageReceiver", fields: [receivedById], references: [id], onDelete: Cascade)
+  history          PackageHistory[]
+  token            PickupToken?
+}
+
+model PickupToken {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  qrValue       String    @unique
+  generatedAt   DateTime  @default(now())
+  expiresAt     DateTime
+  usedAt        DateTime?
+  packageId     String    @unique
+  package       Package   @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  generatedById String
+  generatedBy   User      @relation("TokenGenerator", fields: [generatedById], references: [id], onDelete: Cascade)
+  validatedById String?
+  validatedBy   User?     @relation("TokenValidator", fields: [validatedById], references: [id], onDelete: SetNull)
+}
+
+model PackageHistory {
+  id         String         @id @default(cuid())
+  type       HistoryType
+  note       String
+  createdAt  DateTime       @default(now())
+  fromStatus PackageStatus?
+  toStatus   PackageStatus?
+  packageId  String
+  package    Package        @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  actorId    String?
+  actor      User?          @relation(fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model Notification {
+  id         String                 @id @default(cuid())
+  type       NotificationType
+  title      String
+  message    String
+  href       String?
+  readAt     DateTime?
+  createdAt  DateTime               @default(now())
+  userId     String
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+}
+
+model NotificationDelivery {
+  id               String         @id @default(cuid())
+  channel          DeliveryChannel
+  status           DeliveryStatus @default(PENDING)
+  recipient        String?
+  providerMessageId String?
+  errorMessage     String?
+  attemptedAt      DateTime?
+  createdAt        DateTime       @default(now())
+  notificationId   String
+  notification     Notification   @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id          String          @id @default(cuid())
+  action      AuditAction
+  entityType  AuditEntityType
+  entityId    String?
+  description String
+  context     String?
+  createdAt   DateTime        @default(now())
+  actorId     String?
+  actor       User?           @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+}
+
+model AuthThrottle {
+  id              String   @id
+  scope           String
+  key             String
+  attempts        Int      @default(0)
+  windowStartedAt DateTime
+  blockedUntil    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
