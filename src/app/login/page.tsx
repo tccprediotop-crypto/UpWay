@@ -16,6 +16,8 @@ import { Card } from "@/components/ui/card";
 import { resolveSession } from "@/lib/auth/session";
 import { hasOperationalUsers } from "@/lib/queries";
 
+export const dynamic = "force-dynamic";
+
 type SearchParams = Promise<{
   error?: string;
   status?: string;
